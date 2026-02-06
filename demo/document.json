@@ -1,0 +1,32 @@
+﻿{
+  "agent": {
+    "attributes": [
+      {"name": "LoyaltyEnabled", "value": true},
+      {"name": "LoyaltyDiscountPercent", "value": 10}
+    ]
+  },
+  "positions": [
+    {
+      "id": "p1",
+      "price": 10000,
+      "quantity": 2,
+      "discount": 0,
+      "assortment": {
+        "meta": {"href": "https://api.moysklad.ru/api/remap/1.2/entity/product/aaa"},
+        "attributes": []
+      }
+    },
+    {
+      "id": "p2",
+      "price": 5000,
+      "quantity": 1,
+      "discount": 0,
+      "assortment": {
+        "meta": {"href": "https://api.moysklad.ru/api/remap/1.2/entity/product/bbb"},
+        "attributes": [
+          {"name": "IsPromo", "value": true}
+        ]
+      }
+    }
+  ]
+}
