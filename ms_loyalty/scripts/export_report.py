@@ -1,4 +1,9 @@
-﻿from __future__ import annotations
+"""Optional report script — fetches documents and recalculates loyalty discounts.
+
+Usage:
+    python -m ms_loyalty.scripts.export_report --from 2025-01-01 --to 2025-01-31 --out report.xlsx
+"""
+from __future__ import annotations
 
 import argparse
 import logging
@@ -11,7 +16,7 @@ from dotenv import load_dotenv
 
 from ms_loyalty.app.config import Settings
 from ms_loyalty.app.moysklad import MoySkladClient
-from ms_loyalty.app.logic import apply_discounts, _attr_value
+from ms_loyalty.app.logic import apply_discounts
 
 
 def _parse_date(value: str) -> datetime:
@@ -24,18 +29,18 @@ def _format_filter(dt_from: datetime, dt_to: datetime) -> str:
     return f"moment>={from_str};moment<={to_str}"
 
 
-def _fetch_documents(client: MoySkladClient, doc_type: str, dt_from: datetime, dt_to: datetime) -> list[dict[str, Any]]:
+def _fetch_documents(client: MoySkladClient, doc_type: str,
+                     dt_from: datetime, dt_to: datetime) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     offset = 0
     limit = 1000
-    params = {
-        "filter": _format_filter(dt_from, dt_to),
-        "limit": limit,
-        "offset": offset,
-        "expand": "agent",
-    }
     while True:
-        params["offset"] = offset
+        params: dict[str, Any] = {
+            "filter": _format_filter(dt_from, dt_to),
+            "limit": limit,
+            "offset": offset,
+            "expand": "agent",
+        }
         data = client.request("GET", f"/entity/{doc_type}", params=params)
         chunk = data.get("rows", []) or []
         rows.extend(chunk)
@@ -46,11 +51,10 @@ def _fetch_documents(client: MoySkladClient, doc_type: str, dt_from: datetime, d
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--from", dest="date_from", required=True)
-    parser.add_argument("--to", dest="date_to", required=True)
-    parser.add_argument("--out", dest="out", required=True)
-    parser.add_argument("--recalc", action="store_true", help="recalculate loyalty discount from positions")
+    parser = argparse.ArgumentParser(description="Export loyalty discount report to Excel")
+    parser.add_argument("--from", dest="date_from", required=True, help="Start date YYYY-MM-DD")
+    parser.add_argument("--to", dest="date_to", required=True, help="End date YYYY-MM-DD")
+    parser.add_argument("--out", required=True, help="Output .xlsx file")
     args = parser.parse_args()
 
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -63,18 +67,17 @@ def main() -> int:
     client = MoySkladClient(settings)
 
     report_rows: list[dict[str, Any]] = []
+
     for doc_type in settings.document_types:
         documents = _fetch_documents(client, doc_type, dt_from, dt_to)
         for doc in documents:
             counterparty = (doc.get("agent") or {}).get("name", "")
             total_sum = doc.get("sum", 0)
-            loyalty_sum = _attr_value(doc, settings.loyalty_discount_sum_attr)
-            if loyalty_sum is None and args.recalc:
-                full_doc = client.get_document(doc_type, doc.get("id"), expand="agent,positions.assortment")
-                res = apply_discounts(full_doc, settings)
-                loyalty_sum = res.loyalty_discount_sum
-            if loyalty_sum is None:
-                loyalty_sum = 0
+
+            # recalculate loyalty discount from positions
+            positions = client.get_all_positions(doc_type, doc["id"], expand="assortment")
+            doc["positions"] = positions
+            res = apply_discounts(doc, settings)
 
             report_rows.append({
                 "documentType": doc_type,
@@ -82,7 +85,7 @@ def main() -> int:
                 "moment": doc.get("moment"),
                 "counterparty": counterparty,
                 "sum": total_sum,
-                "loyaltyDiscountSum": int(loyalty_sum),
+                "loyaltyDiscountSum": res.loyalty_discount_sum,
             })
 
     df = pd.DataFrame(report_rows)

@@ -1,76 +1,95 @@
-﻿# MoySklad Loyalty Discounts (Python)
+# MoySklad Loyalty Discounts
 
-Автоматизация применения скидок по программе лояльности и выгрузка отчётности в Excel.
+Автоматизация применения скидок по программе лояльности для оптовых контрагентов в МойСклад.
 
 ## Быстрый старт
-1. Установить зависимости:
-   ```bash
-   python -m venv .venv
-   .\.venv\Scripts\activate
-   pip install -r ms_loyalty/requirements.txt
-   ```
-2. Создать `.env` в `ms_loyalty`.
-3. Запустить сервис (из корня репозитория):
-   ```bash
-   python -m uvicorn ms_loyalty.app.main:app --reload --port 8080
-   ```
+
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate       # Windows
+pip install -r ms_loyalty/requirements.txt
+
+# скопировать и заполнить конфиг
+copy ms_loyalty\.env.example ms_loyalty\.env
+# → прописать MS_TOKEN (или MS_LOGIN + MS_PASSWORD)
+
+# запустить сервис
+python -m uvicorn ms_loyalty.app.main:app --reload --port 8080
+```
 
 ## Конфигурация (.env)
-```
+
+```env
 MS_BASE_URL=https://api.moysklad.ru/api/remap/1.2
 MS_AUTH_MODE=bearer            # bearer | basic
 MS_TOKEN=...                   # для bearer
-MS_LOGIN=...                   # для basic
-MS_PASSWORD=...                # для basic
+# MS_LOGIN=...                 # для basic
+# MS_PASSWORD=...              # для basic
+
 DOCUMENT_TYPES=customerorder,demand
 
-LOYALTY_ENABLED_ATTR=LoyaltyEnabled
-LOYALTY_DISCOUNT_ATTR=LoyaltyDiscountPercent
-PROMO_ATTR=IsPromo
-PROMO_TAG=
-DISABLE_LOYALTY_ATTR=DisableLoyalty
-LOYALTY_DISCOUNT_SUM_ATTR=LoyaltyDiscountSum
+# --- контрагент ---
+LOYALTY_ENABLED_ATTR=Программа лояльности   # чекбокс участия в ПЛ
+LOYALTY_DISCOUNT_ATTR=Скидка по ПЛ (%)       # процент скидки
+WHOLESALER_TAG=Оптовик                       # тег (группа контрагентов)
 
-RESPECT_EXISTING_DISCOUNT=false
+# --- акционные товары ---
+PROMO_GROUP_NAME=Акция                       # папка товаров
+
 DRY_RUN=false
 LOG_LEVEL=INFO
 WEBHOOK_BEARER_TOKEN=
+REQUEST_TIMEOUT=20
 ```
 
-## Настройка доп.полей в МойСклад
-### Контрагент
-- `LoyaltyEnabled` (логическое)
-- `LoyaltyDiscountPercent` (число)
+## Настройка в МойСклад
 
-### Товар
-- `IsPromo` (логическое) — если товар участвует в акции
-  - альтернативно можно использовать тег, заданный в `PROMO_TAG`
+### Контрагент (карточка)
+1. Добавить тег **Оптовик** (Настройки → Группы контрагентов).
+2. Создать доп. поле **Программа лояльности** (тип: Флажок).
+3. Создать доп. поле **Скидка по ПЛ (%)** (тип: Число).
+4. Для каждого оптовика: включить чекбокс, указать процент, назначить тег «Оптовик».
 
-### Документ (Заказ покупателя / Отгрузка)
-- `DisableLoyalty` (логическое) — отключает автоскидку
-- `LoyaltyDiscountSum` (число) — суммарная скидка по лояльности (заполняется сервисом)
+### Товары
+- Создать группу товаров **Акция**.
+- Перемещать товары в папку «Акция», когда они участвуют в акции.
+- На акционные товары скидка по ПЛ **не применяется** — для них используется акционная цена.
 
-## Вебхуки
-Сервис ожидает POST на `/webhook`. Включите вебхуки МойСклад на создание/изменение нужных типов документов.
-Если задан `WEBHOOK_BEARER_TOKEN`, запрос должен содержать `Authorization: Bearer <token>`.
+### Вебхуки
+Создать вебхуки на **создание** и **изменение** документов:
+- Заказ покупателя (`customerorder`)
+- Отгрузка (`demand`)
 
-## Ручной запуск пересчёта
+URL: `https://<ваш_хост>/webhook`
+
+Если задан `WEBHOOK_BEARER_TOKEN`, запрос должен содержать заголовок `Authorization: Bearer <token>`.
+
+## Бизнес-логика
+
 ```
-python -m ms_loyalty.scripts.apply_discounts --type customerorder --id <document_id>
+Webhook → получаем документ → проверяем контрагента:
+  ✓ чекбокс «Программа лояльности» = Да
+  ✓ тег «Оптовик» у контрагента
+  ✓ «Скидка по ПЛ (%)» > 0
+  → для каждой позиции:
+      если товар в папке «Акция» → скидка = 0% (акционная цена)
+      иначе → скидка = % из карточки контрагента
 ```
 
-## Отчётность (Excel)
-```
-python -m ms_loyalty.scripts.export_report --from 2025-01-01 --to 2025-01-31 --out report.xlsx
+Поведение:
+- Скидки проставляются автоматически при создании/изменении документа.
+- При любом изменении (замена товара, смена контрагента, ручная правка скидки) система повторно пересчитывает все позиции.
+- Менеджер не может «перебить» скидку вручную — система перезапишет её при следующем событии.
+- Отключение ПЛ для контрагента — снять чекбокс «Программа лояльности» в карточке.
+
+## Ручной запуск
+
+```bash
+python -m ms_loyalty.scripts.apply_discounts --type customerorder --id <UUID>
 ```
 
-## Логика
-- Если контрагент не участвует в программе — скидка не применяется.
-- Если документ помечен `DisableLoyalty=true` — скидка не применяется.
-- Для неакционных товаров применяется скидка из `LoyaltyDiscountPercent`.
-- Акционные товары (по `IsPromo` или по тегу) исключаются.
-- При изменении контрагента/позиций скидки пересчитываются повторно.
+## Тесты
 
-## Примечания
-- Сервис обновляет только скидку в позициях и доп.поле `LoyaltyDiscountSum`.
-- Если `RESPECT_EXISTING_DISCOUNT=true`, то позиции с уже установленной скидкой не будут перезаписаны.
+```bash
+pytest ms_loyalty/tests/ -v
+```

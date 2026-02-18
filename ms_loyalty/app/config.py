@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 import os
@@ -32,14 +32,15 @@ class Settings:
     password: str
     document_types: list[str]
 
-    loyalty_enabled_attr: str
-    loyalty_discount_attr: str
-    promo_attr: str
-    promo_tag: str
-    disable_loyalty_attr: str
-    loyalty_discount_sum_attr: str
+    # --- counterparty ---
+    loyalty_enabled_attr: str       # checkbox "участвует в ПЛ"
+    loyalty_discount_attr: str      # number  "скидка по ПЛ (%)"
+    wholesaler_tag: str             # tag (группа контрагентов) "Оптовик"
 
-    respect_existing_discount: bool
+    # --- promo detection ---
+    promo_group_name: str           # product-folder name "Акция"
+
+    # --- service ---
     dry_run: bool
     log_level: str
     webhook_bearer_token: str
@@ -54,13 +55,10 @@ class Settings:
             login=_env("MS_LOGIN", ""),
             password=_env("MS_PASSWORD", ""),
             document_types=_env_list("DOCUMENT_TYPES", ["customerorder", "demand"]),
-            loyalty_enabled_attr=_env("LOYALTY_ENABLED_ATTR", "LoyaltyEnabled"),
-            loyalty_discount_attr=_env("LOYALTY_DISCOUNT_ATTR", "LoyaltyDiscountPercent"),
-            promo_attr=_env("PROMO_ATTR", "IsPromo"),
-            promo_tag=_env("PROMO_TAG", ""),
-            disable_loyalty_attr=_env("DISABLE_LOYALTY_ATTR", "DisableLoyalty"),
-            loyalty_discount_sum_attr=_env("LOYALTY_DISCOUNT_SUM_ATTR", "LoyaltyDiscountSum"),
-            respect_existing_discount=_env_bool("RESPECT_EXISTING_DISCOUNT", False),
+            loyalty_enabled_attr=_env("LOYALTY_ENABLED_ATTR", "Программа лояльности"),
+            loyalty_discount_attr=_env("LOYALTY_DISCOUNT_ATTR", "Скидка по ПЛ (%)"),
+            wholesaler_tag=_env("WHOLESALER_TAG", "Оптовик"),
+            promo_group_name=_env("PROMO_GROUP_NAME", "Акция"),
             dry_run=_env_bool("DRY_RUN", False),
             log_level=_env("LOG_LEVEL", "INFO"),
             webhook_bearer_token=_env("WEBHOOK_BEARER_TOKEN", ""),
