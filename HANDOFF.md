@@ -53,7 +53,7 @@ pip install -r requirements.txt
 # Скопировать .env.example → .env, заполнить токен
 cp .env.example .env
 # В .env вписать:
-#   MS_TOKEN=d3697de55102da5fe83adac3364791796ae641fa
+#   MS_TOKEN=ba8bc093bce64d639441e686546b0f27e4fbc7d6
 #   WEBHOOK_BEARER_TOKEN=<придумать длинный секрет>
 ```
 
